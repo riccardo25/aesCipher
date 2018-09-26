@@ -1,0 +1,97 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+
+-- Uncomment the following library declaration if using
+-- arithmetic functions with Signed or Unsigned values
+--use IEEE.NUMERIC_STD.ALL;
+
+-- Uncomment the following library declaration if instantiating
+-- any Xilinx primitives in this code.
+--library UNISIM;
+--use UNISIM.VComponents.all;
+
+entity datalink is
+
+	port(
+			CLK, rst_n 		: in std_logic;
+			
+			-- INPUT
+			cryptrounddata	: in std_logic_vector (32 downto 0);
+			valid_in			: in std_logic;
+			
+			-- OUTPUT
+			valid_out 		: out std_logic;
+			data_out			: out std_logic_vector (127 downto 0)
+		);
+end datalink;
+
+architecture arc of datalink is
+
+	component reg is
+		generic( N : integer);
+		port (CLK, rst_n : in std_logic; load : in std_logic; D : in std_logic_vector(N-1 downto 0); Q : out std_logic_vector(N-1 downto 0));
+	end component;
+	
+	signal 	reset_reg 				: std_logic;
+	signal 	load_D0, load_D1, 
+				load_D2, load_D3		: std_logic;
+				
+				
+	type statetype is (	INIT0, ROUND0, ROUND1, ROUND2, ROUND3 );
+	signal state, nextstate : statetype;
+
+begin
+
+
+--CONTROL UNIT
+
+	state <= 	INIT0	when rst_n = '0' else nextstate when rising_edge(CLK);
+	
+	process (state, cryptrounddata, valid_in)
+	begin
+	
+		case state is
+			when INIT0 =>
+				if( valid_in = '1') then
+					nextstate <=ROUND0;
+				else
+					nextstate <=INIT0;
+				end if;
+			when ROUND0 => 
+				nextstate <= ROUND1;
+			when ROUND1 =>
+				nextstate <= ROUND2;
+			when ROUND2 =>
+				nextstate <= ROUND3;
+			when ROUND3 =>
+				nextstate <= INIT0;
+			when others =>
+				nextstate <= INIT0;
+		end case;
+	end process;
+
+	
+	reset_reg 	<= '0' when rst_n='0' or state=INIT0 else
+						'1';
+	load_D3		<=	'1' when state=ROUND0 else
+						'0';
+	load_D2		<=	'1' when state=ROUND1 else
+						'0';
+	load_D1		<=	'1' when state=ROUND2 else
+						'0';
+	load_D0		<=	'1' when state=ROUND3 else
+						'0';
+						
+
+-- DATAPATH
+
+	D0		: reg generic map(32)	port map(CLK => CLK, rst_n => reset_reg, load => load_D0, D => cryptrounddata, Q => data_out (31 downto 0));
+	D1		: reg generic map(32)	port map(CLK => CLK, rst_n => reset_reg, load => load_D1, D => cryptrounddata, Q => data_out (63 downto 32));
+	D2		: reg generic map(32)	port map(CLK => CLK, rst_n => reset_reg, load => load_D2, D => cryptrounddata, Q => data_out (95 downto 64));
+	D3		: reg generic map(32)	port map(CLK => CLK, rst_n => reset_reg, load => load_D3, D => cryptrounddata, Q => data_out (127 downto 96));
+
+
+
+
+end arc;
+
